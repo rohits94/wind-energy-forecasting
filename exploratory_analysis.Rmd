@@ -1,0 +1,349 @@
+---
+title: "final_project"
+author: "Rohit Satishchandra"
+date: "3/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+#Import Libraries
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(fpp)
+library(tseries)
+library(ggplot2)
+library(forecast)
+library(TSA)
+```
+
+```{r}
+hertz_hourly <- read_csv(file = '50Hertz_hourly.csv')
+amprion_hourly <- read_csv(file = 'Amprion_hourly.csv')
+tennet_hourly <- read_csv(file = 'TenneTTSO_hourly.csv')
+transnet_hourly <- read_csv(file = 'TransnetBW_hourly.csv')
+```
+
+
+```{r}
+hourlys <- round(data.frame(hertz_hourly$hourly_total,
+                            amprion_hourly$hourly_total,
+                            tennet_hourly$hourly_total,
+                            transnet_hourly$hourly_total),0)
+knitr::kable(summary(hourlys))
+```
+
+
+**Create a plot for 50Hertz hourly series.**
+```{r}
+ggplot(data = hertz_hourly) + 
+  geom_line(mapping = aes(x = time, y = hourly_total), color = "#F8766D")
+```
+**Create a plot for Amprion hourly series.**
+```{r}
+ggplot(data = amprion_hourly) + 
+  geom_line(mapping = aes(x = time, y = hourly_total), color = "#FCAE00")
+```
+
+
+**Create a plot for TenneTTSO hourly series.**
+```{r}
+ggplot(data = tennet_hourly) + 
+  geom_line(mapping = aes(x = time, y = hourly_total), color = "#00BFC4")
+```
+**Create a plot for TransnetBW hourly series to examine outlier.**
+```{r}
+ggplot(data = transnet_hourly) + 
+  geom_line(mapping = aes(x = time, y = hourly_total), color = "#C77CFF")
+```
+The TransnetBW outlier appears to occur sometime in late November or early December of 2019. The hourly output is over 1500 terawatt-hours, which is roughly 3 times the next-largest hourly power output.
+
+
+```{r}
+# Plot daily total wind energy output over time
+ggplot() +
+    geom_line(data = hertz_hourly, aes(x = time, y = hourly_total, color = "#F8766D")) +
+    geom_line(data = amprion_hourly, aes(x = time, y = hourly_total, color = "#FCAE00")) +
+    geom_line(data = tennet_hourly, aes(x = time, y = hourly_total, color = "#00BFC4")) +
+    geom_line(data = transnet_hourly, aes(x = time, y = hourly_total, color = "#C77CFF")) +
+    ylab("Hourly Power Generation (TW-h)") + 
+    theme(legend.position = "bottom") +
+  #scale_color_identity allows for creation of legend for separate datasets
+    scale_color_identity(name = "Company",
+                         breaks = c("#F8766D", "#FCAE00", "#00BFC4", "#C77CFF"),
+                         labels = c("Hertz", "Amprion", "TenneT", "TransnetBW"),
+                         guide = "legend") +
+    ggtitle("Hourly Power Generation Over Time by Company")
+```
+
+**Plot histogram of total daily power generation (across all 4 plants)**
+```{r}
+hertz$Date <- dmy(hertz$Date)
+amprion$Date <- dmy(amprion$Date)
+tennet$Date <- dmy(tennet$Date)
+transnet$Date <- dmy(transnet$Date)
+
+```
+
+```{r}
+# Add a daily total column to each dataset
+hertz$daily_total <- rowSums(hertz[,2:97])
+amprion$daily_total <- rowSums(amprion[,2:97])
+tennet$daily_total <- rowSums(tennet[,2:97])
+transnet$daily_total <- rowSums(transnet[,2:97])
+
+# Create data frames with just daily total
+hertz_daily <- hertz[c(98)]
+amprion_daily <- amprion[c(98)]
+tennet_daily <- tennet[c(98)]
+transnet_daily <- transnet[c(98)]
+```
+
+```{r}
+total <- amprion
+total[,c(2:98)] <- total[,c(2:98)] + hertz[,c(2:98)] + tennet[,c(2:98)] + transnet[,c(2:98)]
+
+summary(total$daily_total)
+```
+
+
+```{r}
+ggplot() +
+    geom_line(data = hertz, aes(x = Date, y = daily_total, color = "#F8766D")) +
+    geom_line(data = amprion, aes(x = Date, y = daily_total, color = "#FCAE00")) +
+    geom_line(data = tennet, aes(x = Date, y = daily_total, color = "#00BFC4")) +
+    geom_line(data = transnet, aes(x = Date, y = daily_total, color = "#C77CFF")) +
+    ylab("Daily Power Generation (TWh)") + 
+    theme(legend.position = "bottom") +
+  #scale_color_identity allows for creation of legend for separate datasets
+    scale_color_identity(name = "Company",
+                         breaks = c("#F8766D", "#FCAE00", "#00BFC4", "#C77CFF"),
+                         labels = c("Hertz", "Amprion", "TenneT", "TransnetBW"),
+                         guide = "legend") +
+    ggtitle("Daily Power Generation Over Time by Company")
+```
+
+
+
+
+```{r}
+ggplot() +
+    geom_line(data = total, aes(x = Date, y = daily_total), color = "darkblue") +
+    ylab("Daily Power Generation (TWh)") +
+    ggtitle("Total (4 Plants) Daily Power Generation Over Time")
+```
+
+
+```{r}
+total_daily_mean <- mean(total$daily_total)
+total_daily_median <- median(total$daily_total)
+
+
+ggplot(data = total, aes(x = daily_total)) +
+    geom_histogram(bins = 50) +
+    xlab("Total Daily Wind Energy Output (TWh)") + 
+    ylab("Number of Days") +
+    ggtitle("Distribution of German Daily Wind Energy Output") +
+    geom_segment(aes(x = total_daily_mean, xend = total_daily_mean, y = 0, yend = 45), color = "blue") +
+    geom_segment(aes(x = total_daily_median, xend = total_daily_median, y = 0, yend = 45), color = "purple") +
+    geom_text(aes(label = paste0("Mean = ",round(total_daily_mean, 0), " TWh"), x = total_daily_mean+ 22000, y = 42), color = "blue") +
+    geom_text(aes(label = paste0("Median = ", round(total_daily_median, 0), " TWh"), x = total_daily_median - 280, y = 46), color = "purple")
+```
+
+```{r}
+ggplot(data = hertz_hourly[1:24, 1:2]) + 
+  geom_line(mapping = aes(x = time, y = hourly_total), color = "#00BFC4") +
+  ggtitle("Hourly Power Generation (TWh) for 1 day, 8/23/2019")
+
+ggplot(data = hertz_hourly[1:720, 1:2]) + 
+  geom_line(mapping = aes(x = time, y = hourly_total), color = "#00BFC4") +
+  ggtitle("Hourly Power Generation (TWh) for 1 month, 8/23/2019 - 8/30/2019")
+
+ggplot(data = hertz_hourly[2400:2568, 1:2]) + 
+  geom_line(mapping = aes(x = time, y = hourly_total), color = "#00BFC4") +
+  ggtitle("Hourly Power Generation (TWh) for 1 week (mid-series)")
+```
+
+**Group each hourly data set by hour and compute total power output, mean, median.**
+```{r}
+
+hertz_hourly$hour <- as.POSIXlt(hertz_hourly$time)$hour
+amprion_hourly$hour <- as.POSIXlt(amprion_hourly$time)$hour
+tennet_hourly$hour <- as.POSIXlt(tennet_hourly$time)$hour
+transnet_hourly$hour <- as.POSIXlt(transnet_hourly$time)$hour
+
+
+hertz_by_hour <- hertz_hourly %>% 
+  group_by(hour) %>% 
+  summarise(
+    total_output = sum(hourly_total),
+    mean_output = mean(hourly_total),
+    median_output = median(hourly_total)
+)
+
+amprion_by_hour <- amprion_hourly %>% 
+  group_by(hour) %>% 
+  summarise(
+    total_output = sum(hourly_total),
+    mean_output = mean(hourly_total),
+    median_output = median(hourly_total)
+)
+
+
+tennet_by_hour <- tennet_hourly %>% 
+  group_by(hour) %>% 
+  summarise(
+    total_output = sum(hourly_total),
+    mean_output = mean(hourly_total),
+    median_output = median(hourly_total)
+)
+
+transnet_by_hour <- transnet_hourly %>% 
+  group_by(hour) %>% 
+  summarise(
+    total_output = sum(hourly_total),
+    mean_output = mean(hourly_total),
+    median_output = median(hourly_total)
+)
+```
+
+**Plot mean and median power output for each hour of the day** 
+```{r}
+
+ggplot() +
+  geom_line(data = hertz_by_hour, aes(x = hour, y = median_output, color = "#F8766D")) +
+  geom_line(data = amprion_by_hour, aes(x = hour, y = median_output, color = "#FCAE00")) +
+  geom_line(data = tennet_by_hour, aes(x = hour, y = median_output, color = "#00BFC4")) +
+  geom_line(data = transnet_by_hour, aes(x = hour, y = median_output, color = "#C77CFF")) +
+  xlab("Hour of Day") +
+  ylab("Median Power Generation (TWh)") +
+  theme(legend.position = "bottom") +
+  scale_color_identity(name = "Company",
+                         breaks = c("#F8766D", "#FCAE00", "#00BFC4", "#C77CFF"),
+                         labels = c("Hertz", "Amprion", "TenneT", "TransnetBW"),
+                         guide = "legend") +
+  ggtitle("Median Power Generation (TWh) by Hour of Day")
+
+
+ggplot() +
+  geom_line(data = hertz_by_hour, aes(x = hour, y = mean_output, color = "#F8766D")) +
+  geom_line(data = amprion_by_hour, aes(x = hour, y = mean_output, color = "#FCAE00")) +
+  geom_line(data = tennet_by_hour, aes(x = hour, y = mean_output, color = "#00BFC4")) +
+  geom_line(data = transnet_by_hour, aes(x = hour, y = mean_output, color = "#C77CFF")) +
+  xlab("Hour of Day") +
+  ylab("Mean Power Generation (TWh)") +
+  theme(legend.position = "bottom") +
+  scale_color_identity(name = "Company",
+                         breaks = c("#F8766D", "#FCAE00", "#00BFC4", "#C77CFF"),
+                         labels = c("Hertz", "Amprion", "TenneT", "TransnetBW"),
+                         guide = "legend") +
+  ggtitle("Mean Power Generation (TWh) by Hour of Day")
+  
+```
+
+**15-Minute Interval Means**
+```{r}
+# for each plant:
+# create a vector of mean energy outputs for each 15-minute interval of the day
+# should have a 97-row dataframe with each row representing a 15-minute increment
+
+hertz_15min_means <- rownames_to_column(data.frame(mean = sapply(hertz[, 2:97], mean)), var = "time_increment")
+hertz_15min_means$time_increment <- as_datetime(hms(hertz_15min_means$time_increment))
+
+amprion_15min_means <- rownames_to_column(data.frame(mean = sapply(amprion[, 2:97], mean)), var = "time_increment")
+amprion_15min_means$time_increment <- as_datetime(hms(amprion_15min_means$time_increment))
+
+tennet_15min_means <- rownames_to_column(data.frame(mean = sapply(tennet[, 2:97], mean)), var = "time_increment")
+tennet_15min_means$time_increment <- as_datetime(hms(tennet_15min_means$time_increment))
+
+transnet_15min_means <- rownames_to_column(data.frame(mean = sapply(transnet[, 2:97], mean)), var = "time_increment")
+transnet_15min_means$time_increment <- as_datetime(hms(transnet_15min_means$time_increment))
+```
+
+```{r}
+ggplot() +
+    geom_line(data = hertz_15min_means, aes(x = time_increment, y = mean, color = "#F8766D", linetype = "Mean")) +
+    geom_line(data = amprion_15min_means, aes(x = time_increment, y = mean, color = "#FCAE00", linetype = "Mean")) +
+    geom_line(data = tennet_15min_means, aes(x = time_increment, y = mean, color = "#00BFC4", linetype = "Mean")) +
+    geom_line(data = transnet_15min_means, aes(x = time_increment, y = mean, color = "#C77CFF", linetype = "Mean")) +
+    #scale_x_datetime(breaks = xbreaks, labels = date_format("%H:%M")  # need scales pkg for date_format & date_breaks
+    xlab("Time of Day") +
+    ylab("Mean Power Generation (TWh)") +
+    theme(legend.position = "bottom") +
+#  scale_color_identity allows for creation of legend for separate datasets
+    scale_color_identity(name = "Company:",
+                         breaks = c("#F8766D", "#FCAE00", "#00BFC4", "#C77CFF"),
+                         labels = c("Hertz", "Amprion", "TenneT", "TransnetBW"),
+                         guide = "legend",
+    ) +
+    scale_linetype_manual(name = "Measure:",
+                          values = c("Mean" = 1, "Median" = 3),
+                          guide = "legend") +
+    ggtitle("Mean Power Generation for 15-Minute Increments Throughout the Day")
+```
+
+**TransnetBW Outliers**
+```{r}
+ggplot(data = transnet) +
+    geom_point(aes(x = Date, y = transnet$`09:00:00`)) + 
+    geom_point(aes(x = Date, y = transnet$`10:00:00`), color = "cyan") +
+    geom_point(aes(x = Date, y = transnet$`11:00:00`), color = "red") +
+    geom_point(aes(x = Date, y = transnet$`12:00:00`), color = "blue") +
+    geom_point(aes(x = Date, y = transnet$`13:00:00`), color = "purple") +
+    scale_x_date(limits = c(date("2019-11-20"),date("2019-12-10"))) +
+    ylab(" Power Generation (TWh)")
+```
+On December 2, 2019, in the morning to midday, there are spikes in energy output on the hour, beginning at 9 AM and peaking at 11AM and falling between noon and 2 PM. In the intermediate intervals (for example, at 9:30 and 10:30 AM), energy output is normal.
+
+
+```{r}
+# Create time series for hourly data
+
+Hertz_Hourly_TS <- ts(hertz_hourly[c(2)], 
+                     start = decimal_date(as.Date("2019-08-23 00:00:00")),
+                     frequency = 8766)
+
+Amprion_Hourly_TS <- ts(amprion_hourly[c(2)], 
+                     start = decimal_date(as.Date("2019-08-23 00:00:00")),
+                     frequency = 8766)
+
+TenneTTSO_Hourly_TS <- ts(tennet_hourly[c(2)], 
+                     start = decimal_date(as.Date("2019-08-23 00:00:00")),
+                     frequency = 8766)
+
+TransnetBW_Hourly_TS <- ts(transnet_hourly[c(2)], 
+                     start = decimal_date(as.Date("2019-08-23 00:00:00")),
+                     frequency = 8766)
+```
+
+```{r}
+
+plants_ts <- list(Hertz_Hourly_TS, Amprion_Hourly_TS, TenneTTSO_Hourly_TS, TransnetBW_Hourly_TS)
+
+for (series in plants_ts)
+{
+tsdisplay(series, lag.max = 72, points = FALSE)
+}
+
+```
+
+```{r}
+stationarity_tests <- function(timeseries)
+  adf_pvalue <- adf.test(timeseries)$p.value
+if(adf_pvalue >= 0.05){
+    sprintf("The ADF test p-value is %f. Null hypothesis is maintained -- the series is non-stationary.", adf_pvalue)
+  } else{
+    sprintf("The ADF test p-value is %f. Null hypothesis is rejected -- the series is stationary.")
+  }
+  kpss_pvalue <- kpss.test(timeseries)$p.value
+if(kpss_pvalue >= 0.05){
+    sprintf("The ADF test p-value is %f. Null hypothesis is maintained -- the series is stationary.", adf_pvalue)
+  } else{
+    sprintf("The ADF test p-value is %f. Null hypothesis is rejected -- the series is non-stationary.")
+  }
+  
+```
